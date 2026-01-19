@@ -57,6 +57,11 @@ export const MainCanvas: React.FC = () => {
     updateLandVertex,
     selectLand,
     setSelectedEdge,
+    // 無道路地関連
+    isDrawingRoadlessFrontRoad,
+    roadlessFrontRoadPoints,
+    addRoadlessFrontRoadPoint,
+    finishRoadlessFrontRoadDrawing,
   } = useStore();
 
   // Canvas初期化
@@ -395,6 +400,78 @@ export const MainCanvas: React.FC = () => {
         });
         canvas.add(roadLine);
       });
+
+      // 無道路地の正面路線を描画
+      if (land.isRoadlessLand && land.frontRoadLine) {
+        const [p1, p2] = land.frontRoadLine.points;
+
+        // 正面路線（破線）
+        const frontRoadLine = new Line([p1.x, p1.y, p2.x, p2.y], {
+          stroke: '#E60000',
+          strokeWidth: 4,
+          strokeDashArray: [8, 4],
+          selectable: false,
+          evented: false,
+        });
+        canvas.add(frontRoadLine);
+
+        // 路線価ラベル
+        const midX = (p1.x + p2.x) / 2;
+        const midY = (p1.y + p2.y) / 2;
+        const rosenkaLabel = new Text(`${land.frontRoadLine.rosenka}千円`, {
+          left: midX,
+          top: midY - 15,
+          fontSize: 10,
+          fill: '#E60000',
+          fontFamily: 'Arial, sans-serif',
+          fontWeight: 'bold',
+          backgroundColor: 'rgba(255,255,255,0.8)',
+          selectable: false,
+          evented: false,
+          originX: 'center',
+          originY: 'center',
+        });
+        canvas.add(rosenkaLabel);
+
+        // 土地から正面路線への最短距離線を描画
+        if (land.distanceToFrontRoad !== undefined) {
+          // 最も近い頂点を見つける
+          let minDist = Infinity;
+          let closestVertex = land.vertices[0];
+          let nearestPointOnRoad = p1;
+
+          for (const vertex of land.vertices) {
+            // 点から線分への最近点を計算
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const len2 = dx * dx + dy * dy;
+            let t = len2 === 0 ? 0 : ((vertex.x - p1.x) * dx + (vertex.y - p1.y) * dy) / len2;
+            t = Math.max(0, Math.min(1, t));
+            const nearX = p1.x + t * dx;
+            const nearY = p1.y + t * dy;
+            const dist = Math.sqrt((vertex.x - nearX) ** 2 + (vertex.y - nearY) ** 2);
+
+            if (dist < minDist) {
+              minDist = dist;
+              closestVertex = vertex;
+              nearestPointOnRoad = { x: nearX, y: nearY };
+            }
+          }
+
+          // 距離線（破線）
+          const distanceLine = new Line(
+            [closestVertex.x, closestVertex.y, nearestPointOnRoad.x, nearestPointOnRoad.y],
+            {
+              stroke: '#FF6600',
+              strokeWidth: 2,
+              strokeDashArray: [4, 2],
+              selectable: false,
+              evented: false,
+            }
+          );
+          canvas.add(distanceLine);
+        }
+      }
 
       // 利用単位を描画
       if (land.usageUnits && land.usageUnits.length > 0) {
@@ -799,6 +876,36 @@ export const MainCanvas: React.FC = () => {
       canvas.add(circle);
     });
 
+    // 無道路地の正面路線描画中の点を描画
+    roadlessFrontRoadPoints.forEach((p, i) => {
+      const circle = new Circle({
+        left: p.x,
+        top: p.y,
+        radius: 6,
+        fill: '#FF6600',
+        stroke: '#fff',
+        strokeWidth: 2,
+        selectable: false,
+        evented: false,
+        originX: 'center',
+        originY: 'center',
+      });
+      canvas.add(circle);
+
+      // 1点目と2点目の間に線を描画
+      if (i === 1 && roadlessFrontRoadPoints.length === 2) {
+        const [p1, p2] = roadlessFrontRoadPoints;
+        const line = new Line([p1.x, p1.y, p2.x, p2.y], {
+          stroke: '#FF6600',
+          strokeWidth: 3,
+          strokeDashArray: [6, 3],
+          selectable: false,
+          evented: false,
+        });
+        canvas.add(line);
+      }
+    });
+
     // 既存の描画線を描画
     project.drawingLines.forEach((drawingLine) => {
       const [p1, p2] = drawingLine.points;
@@ -900,6 +1007,7 @@ export const MainCanvas: React.FC = () => {
     currentTool,
     hoveredDrawingVertexIndex,
     hoveredLandVertexInfo,
+    roadlessFrontRoadPoints,
   ]);
 
   // 拡大鏡の描画
@@ -1162,6 +1270,20 @@ export const MainCanvas: React.FC = () => {
               const num = parseFloat(rosenka);
               if (!isNaN(num) && num > 0) {
                 finishRoadDrawing(num);
+              }
+            }
+          }, 10);
+        }
+      } else if (isDrawingRoadlessFrontRoad) {
+        // 無道路地の正面路線描画モード
+        addRoadlessFrontRoadPoint(point);
+        if (roadlessFrontRoadPoints.length === 1) {
+          setTimeout(() => {
+            const rosenka = prompt('正面路線の路線価を入力してください（千円/㎡）:');
+            if (rosenka) {
+              const num = parseFloat(rosenka);
+              if (!isNaN(num) && num > 0) {
+                finishRoadlessFrontRoadDrawing(num);
               }
             }
           }, 10);

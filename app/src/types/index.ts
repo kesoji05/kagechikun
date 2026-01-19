@@ -54,6 +54,14 @@ export interface Land {
   usageUnits?: UsageUnit[]; // 利用単位
   frontageIndices?: [number, number]; // 間口を構成する頂点インデックス
   passageArea?: number; // 通路の面積（㎡）
+  // 無道路地関連
+  isRoadlessLand?: boolean; // 無道路地フラグ
+  frontRoadLine?: {
+    points: [Point, Point]; // 正面路線の座標
+    rosenka: number; // 路線価（千円/㎡）
+  };
+  distanceToFrontRoad?: number; // 正面路線までの距離（m）
+  passageWidth?: number; // 通路幅（m）
 }
 
 // 基準尺
@@ -101,7 +109,8 @@ export type ToolMode =
   | 'perpendicular'
   | 'extension'
   | 'parallel'
-  | 'usageUnit';
+  | 'usageUnit'
+  | 'roadlessFrontRoad'; // 無道路地の正面路線設定
 
 // 描画線種別
 export type DrawingLineType = '直線' | '垂線' | '延線' | '平行';

@@ -26,6 +26,9 @@ export const Toolbar: React.FC = () => {
     alignRoadToTop,
     canvasRotation,
     setCanvasRotation,
+    // 無道路地関連
+    isDrawingRoadlessFrontRoad,
+    cancelRoadlessFrontRoadDrawing,
   } = useStore();
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -310,6 +313,11 @@ export const Toolbar: React.FC = () => {
             路線設定中: 路線の2点をクリックしてください
           </span>
         )}
+        {isDrawingRoadlessFrontRoad && (
+          <span className="text-amber-600 font-medium">
+            無道路地: 正面路線の2点をクリックしてください
+          </span>
+        )}
         {isDrawingUsageUnit && (
           <span className="text-purple-600 font-medium">
             利用単位作図中: 頂点をクリック、ダブルクリックで完了
@@ -335,7 +343,7 @@ export const Toolbar: React.FC = () => {
             平行線描画中: 基準辺をクリック → 平行線の始点・終点をクリック
           </span>
         )}
-        {!isDrawingLand && !isDrawingRoad && !isDrawingLine && !isDrawingUsageUnit && hasLands && (
+        {!isDrawingLand && !isDrawingRoad && !isDrawingRoadlessFrontRoad && !isDrawingLine && !isDrawingUsageUnit && hasLands && (
           <span className="text-green-600">
             サイドパネルで地積を入力してください
           </span>
@@ -343,11 +351,12 @@ export const Toolbar: React.FC = () => {
       </div>
 
       {/* キャンセルボタン */}
-      {(isDrawingLand || isDrawingRoad || isDrawingLine || isDrawingUsageUnit) && (
+      {(isDrawingLand || isDrawingRoad || isDrawingRoadlessFrontRoad || isDrawingLine || isDrawingUsageUnit) && (
         <button
           onClick={() => {
             if (isDrawingLand) cancelLandDrawing();
             if (isDrawingRoad) cancelRoadDrawing();
+            if (isDrawingRoadlessFrontRoad) cancelRoadlessFrontRoadDrawing();
             if (isDrawingLine) cancelLineDrawing();
             if (isDrawingUsageUnit) cancelUsageUnitDrawing();
           }}

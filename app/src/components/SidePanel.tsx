@@ -171,6 +171,13 @@ export const SidePanel: React.FC = () => {
     soteiSeikeiChi,
     createRoadFromVertices,
     deleteRoad,
+    // 無道路地関連
+    setLandRoadlessFlag,
+    startRoadlessFrontRoadDrawing,
+    calculateDistanceToFrontRoad,
+    setLandPassageWidth,
+    clearLandFrontRoadLine,
+    isDrawingRoadlessFrontRoad,
   } = useStore();
 
   const selectedLand = project.lands.find((l) => l.id === selectedLandId);
@@ -182,6 +189,8 @@ export const SidePanel: React.FC = () => {
   // 間口選択用のローカルステート
   const [frontageStart, setFrontageStart] = useState<number>(0);
   const [frontageEnd, setFrontageEnd] = useState<number>(1);
+  // 無道路地：通路幅入力用のローカルステート
+  const [passageWidthInput, setPassageWidthInput] = useState<string>('');
 
   // 計算結果
   const [calculationResult, setCalculationResult] = useState<{
@@ -221,7 +230,14 @@ export const SidePanel: React.FC = () => {
       setFrontageStart(0);
       setFrontageEnd(1);
     }
-  }, [selectedLand?.id, selectedLand?.actualArea, selectedLand?.passageArea, selectedLand?.frontageIndices]);
+
+    // 無道路地：通路幅を同期
+    if (selectedLand?.passageWidth !== undefined) {
+      setPassageWidthInput(selectedLand.passageWidth.toString());
+    } else {
+      setPassageWidthInput('');
+    }
+  }, [selectedLand?.id, selectedLand?.actualArea, selectedLand?.passageArea, selectedLand?.frontageIndices, selectedLand?.passageWidth]);
 
   // 間口距離を計算（ユーザー指定の頂点間）
   const calculateFrontageDistance = (): number => {
@@ -351,6 +367,23 @@ export const SidePanel: React.FC = () => {
       setLandPassageArea(selectedLand.id, numValue);
     } else if (value === '' && selectedLand) {
       setLandPassageArea(selectedLand.id, undefined);
+    }
+  };
+
+  // 無道路地：通路幅の変更ハンドラ
+  const handlePassageWidthChange = (value: string) => {
+    setPassageWidthInput(value);
+    const numValue = parseFloat(value);
+    if (!isNaN(numValue) && numValue > 0 && selectedLand) {
+      setLandPassageWidth(selectedLand.id, numValue);
+      // 通路面積を自動計算（通路幅 × 正面路線までの距離）
+      if (selectedLand.distanceToFrontRoad) {
+        const passageArea = numValue * selectedLand.distanceToFrontRoad;
+        setLandPassageArea(selectedLand.id, passageArea);
+        setPassageAreaInput(passageArea.toFixed(2));
+      }
+    } else if (value === '' && selectedLand) {
+      setLandPassageWidth(selectedLand.id, undefined);
     }
   };
 
@@ -490,10 +523,122 @@ export const SidePanel: React.FC = () => {
               </select>
             </div>
 
+            {/* 無道路地チェックボックス */}
+            <div className="mb-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selectedLand.isRoadlessLand || false}
+                  onChange={(e) => setLandRoadlessFlag(selectedLand.id, e.target.checked)}
+                  className="rounded border-gray-300"
+                />
+                <span className="text-sm font-medium text-gray-700">無道路地</span>
+              </label>
+              {selectedLand.isRoadlessLand && (
+                <p className="text-xs text-gray-500 mt-1 ml-6">
+                  土地が直接道路に接していない場合にチェック
+                </p>
+              )}
+            </div>
+
           </div>
 
-          {/* 路線設定 */}
-          {selectedLand.vertices.length >= 2 && selectedLand.actualArea && (
+          {/* 無道路地設定 */}
+          {selectedLand.isRoadlessLand && selectedLand.vertices.length >= 2 && selectedLand.actualArea && (
+            <div className="p-4 border-b bg-amber-50">
+              <h2 className="font-bold text-amber-800 mb-2">無道路地設定</h2>
+
+              {/* 正面路線の設定 */}
+              <div className="mb-3">
+                <label className="block text-sm text-gray-600 mb-1">正面路線（土地外）</label>
+                {selectedLand.frontRoadLine ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-green-600 flex-1">
+                      路線価: {selectedLand.frontRoadLine.rosenka} 千円/㎡
+                    </span>
+                    <button
+                      onClick={() => clearLandFrontRoadLine(selectedLand.id)}
+                      className="text-xs px-2 py-1 text-red-500 hover:text-red-700"
+                    >
+                      削除
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => startRoadlessFrontRoadDrawing(selectedLand.id)}
+                    disabled={isDrawingRoadlessFrontRoad}
+                    className={`w-full text-sm px-3 py-2 rounded ${
+                      isDrawingRoadlessFrontRoad
+                        ? 'bg-amber-600 text-white'
+                        : 'bg-amber-200 hover:bg-amber-300 text-amber-800'
+                    }`}
+                  >
+                    {isDrawingRoadlessFrontRoad ? '路線を描画中...' : '正面路線を設定'}
+                  </button>
+                )}
+              </div>
+
+              {/* 正面路線までの距離 */}
+              {selectedLand.frontRoadLine && (
+                <div className="mb-3">
+                  <label className="block text-sm text-gray-600 mb-1">正面路線までの距離</label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => calculateDistanceToFrontRoad(selectedLand.id)}
+                      className="text-xs px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
+                    >
+                      距離を計算
+                    </button>
+                    {selectedLand.distanceToFrontRoad !== undefined && (
+                      <span className="text-sm font-medium text-blue-600">
+                        {selectedLand.distanceToFrontRoad.toFixed(2)} m
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* 通路幅 */}
+              {selectedLand.distanceToFrontRoad !== undefined && (
+                <div className="mb-3">
+                  <label className="block text-sm text-gray-600 mb-1">通路幅</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      value={passageWidthInput}
+                      onChange={(e) => handlePassageWidthChange(e.target.value)}
+                      placeholder="例: 2.0"
+                      className="flex-1 border rounded px-2 py-1 text-sm"
+                      step="0.01"
+                      min="0"
+                    />
+                    <span className="text-sm text-gray-500">m</span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    接道義務を満たす場合は通常2m以上
+                  </p>
+                </div>
+              )}
+
+              {/* 通路面積（自動計算） */}
+              {selectedLand.passageWidth && selectedLand.distanceToFrontRoad && (
+                <div className="mb-3 p-2 bg-amber-100 rounded">
+                  <label className="block text-sm text-gray-600 mb-1">通路面積（参考）</label>
+                  <div className="text-sm">
+                    <span className="text-gray-600">
+                      {selectedLand.passageWidth.toFixed(2)} m × {selectedLand.distanceToFrontRoad.toFixed(2)} m =
+                    </span>
+                    <span className="font-bold text-amber-700 ml-1">
+                      {(selectedLand.passageWidth * selectedLand.distanceToFrontRoad).toFixed(2)} ㎡
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 路線設定（通常の土地用） */}
+          {!selectedLand.isRoadlessLand && selectedLand.vertices.length >= 2 && selectedLand.actualArea && (
             <div className="p-4 border-b">
               <h2 className="font-bold text-gray-800 mb-2">路線設定</h2>
               <RoadTypeInput

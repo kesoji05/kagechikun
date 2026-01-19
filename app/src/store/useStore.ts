@@ -75,6 +75,21 @@ interface AppState {
   setLandFrontageIndices: (landId: string, frontageIndices: [number, number] | undefined) => void;
   setLandPassageArea: (landId: string, passageArea: number | undefined) => void;
 
+  // 無道路地設定
+  setLandRoadlessFlag: (landId: string, isRoadless: boolean) => void;
+  setLandFrontRoadLine: (landId: string, points: [Point, Point], rosenka: number) => void;
+  clearLandFrontRoadLine: (landId: string) => void;
+  setLandDistanceToFrontRoad: (landId: string, distance: number | undefined) => void;
+  setLandPassageWidth: (landId: string, width: number | undefined) => void;
+  calculateDistanceToFrontRoad: (landId: string) => void;
+  isDrawingRoadlessFrontRoad: boolean;
+  roadlessFrontRoadPoints: Point[];
+  roadlessFrontRoadLandId: string | null;
+  startRoadlessFrontRoadDrawing: (landId: string) => void;
+  addRoadlessFrontRoadPoint: (point: Point) => void;
+  finishRoadlessFrontRoadDrawing: (rosenka: number) => void;
+  cancelRoadlessFrontRoadDrawing: () => void;
+
   // 路線設定
   startRoadDrawing: (landId: string) => void;
   addRoadPoint: (point: Point) => void;
@@ -108,6 +123,31 @@ interface AppState {
 }
 
 const generateId = () => Math.random().toString(36).substring(2, 9);
+
+// 点から線分への最短距離を計算
+const pointToLineSegmentDistance = (point: Point, lineStart: Point, lineEnd: Point): number => {
+  const dx = lineEnd.x - lineStart.x;
+  const dy = lineEnd.y - lineStart.y;
+  const lengthSquared = dx * dx + dy * dy;
+
+  if (lengthSquared === 0) {
+    // 線分の長さが0の場合、点間の距離を返す
+    return Math.sqrt(
+      Math.pow(point.x - lineStart.x, 2) + Math.pow(point.y - lineStart.y, 2)
+    );
+  }
+
+  // 線分上の最近点を計算
+  let t = ((point.x - lineStart.x) * dx + (point.y - lineStart.y) * dy) / lengthSquared;
+  t = Math.max(0, Math.min(1, t)); // 線分の範囲内にクランプ
+
+  const nearestX = lineStart.x + t * dx;
+  const nearestY = lineStart.y + t * dy;
+
+  return Math.sqrt(
+    Math.pow(point.x - nearestX, 2) + Math.pow(point.y - nearestY, 2)
+  );
+};
 
 const initialProject: Project = {
   id: generateId(),
@@ -143,6 +183,9 @@ export const useStore = create<AppState>((set) => ({
   selectedEdge: null,
   currentUsageUnitVertices: [],
   currentUsageUnitLandId: null,
+  isDrawingRoadlessFrontRoad: false,
+  roadlessFrontRoadPoints: [],
+  roadlessFrontRoadLandId: null,
   zoom: 1,
   panOffset: { x: 0, y: 0 },
   canvasRotation: 0,
@@ -342,6 +385,162 @@ export const useStore = create<AppState>((set) => ({
         updatedAt: new Date().toISOString(),
       },
     })),
+
+  // 無道路地設定
+  setLandRoadlessFlag: (landId, isRoadless) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        lands: state.project.lands.map((land) =>
+          land.id === landId
+            ? {
+                ...land,
+                isRoadlessLand: isRoadless,
+                // 無道路地解除時は関連データをクリア
+                ...(isRoadless ? {} : {
+                  frontRoadLine: undefined,
+                  distanceToFrontRoad: undefined,
+                  passageWidth: undefined,
+                }),
+              }
+            : land
+        ),
+        updatedAt: new Date().toISOString(),
+      },
+    })),
+
+  setLandFrontRoadLine: (landId, points, rosenka) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        lands: state.project.lands.map((land) =>
+          land.id === landId
+            ? { ...land, frontRoadLine: { points, rosenka } }
+            : land
+        ),
+        updatedAt: new Date().toISOString(),
+      },
+    })),
+
+  clearLandFrontRoadLine: (landId) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        lands: state.project.lands.map((land) =>
+          land.id === landId
+            ? { ...land, frontRoadLine: undefined, distanceToFrontRoad: undefined }
+            : land
+        ),
+        updatedAt: new Date().toISOString(),
+      },
+    })),
+
+  setLandDistanceToFrontRoad: (landId, distance) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        lands: state.project.lands.map((land) =>
+          land.id === landId
+            ? { ...land, distanceToFrontRoad: distance }
+            : land
+        ),
+        updatedAt: new Date().toISOString(),
+      },
+    })),
+
+  setLandPassageWidth: (landId, width) =>
+    set((state) => ({
+      project: {
+        ...state.project,
+        lands: state.project.lands.map((land) =>
+          land.id === landId
+            ? { ...land, passageWidth: width }
+            : land
+        ),
+        updatedAt: new Date().toISOString(),
+      },
+    })),
+
+  calculateDistanceToFrontRoad: (landId) =>
+    set((state) => {
+      const land = state.project.lands.find((l) => l.id === landId);
+      if (!land || !land.frontRoadLine || !state.project.scale) return state;
+
+      const { points: roadPoints } = land.frontRoadLine;
+      const pixelsPerMeter = state.project.scale.pixelsPerMeter;
+
+      // 土地の各頂点から正面路線までの最短距離を計算
+      let minDistance = Infinity;
+
+      for (const vertex of land.vertices) {
+        // 点から線分への最短距離を計算
+        const distance = pointToLineSegmentDistance(vertex, roadPoints[0], roadPoints[1]);
+        if (distance < minDistance) {
+          minDistance = distance;
+        }
+      }
+
+      // ピクセルからメートルに変換
+      const distanceMeters = minDistance / pixelsPerMeter;
+
+      return {
+        project: {
+          ...state.project,
+          lands: state.project.lands.map((l) =>
+            l.id === landId
+              ? { ...l, distanceToFrontRoad: distanceMeters }
+              : l
+          ),
+          updatedAt: new Date().toISOString(),
+        },
+      };
+    }),
+
+  startRoadlessFrontRoadDrawing: (landId) =>
+    set({
+      isDrawingRoadlessFrontRoad: true,
+      roadlessFrontRoadPoints: [],
+      roadlessFrontRoadLandId: landId,
+      currentTool: 'roadlessFrontRoad',
+    }),
+
+  addRoadlessFrontRoadPoint: (point) =>
+    set((state) => ({
+      roadlessFrontRoadPoints: [...state.roadlessFrontRoadPoints, point],
+    })),
+
+  finishRoadlessFrontRoadDrawing: (rosenka) =>
+    set((state) => {
+      if (state.roadlessFrontRoadPoints.length !== 2 || !state.roadlessFrontRoadLandId) {
+        return state;
+      }
+
+      const [p1, p2] = state.roadlessFrontRoadPoints;
+
+      return {
+        project: {
+          ...state.project,
+          lands: state.project.lands.map((land) =>
+            land.id === state.roadlessFrontRoadLandId
+              ? { ...land, frontRoadLine: { points: [p1, p2], rosenka } }
+              : land
+          ),
+          updatedAt: new Date().toISOString(),
+        },
+        isDrawingRoadlessFrontRoad: false,
+        roadlessFrontRoadPoints: [],
+        roadlessFrontRoadLandId: null,
+        currentTool: 'select',
+      };
+    }),
+
+  cancelRoadlessFrontRoadDrawing: () =>
+    set({
+      isDrawingRoadlessFrontRoad: false,
+      roadlessFrontRoadPoints: [],
+      roadlessFrontRoadLandId: null,
+      currentTool: 'select',
+    }),
 
   // 路線設定
   startRoadDrawing: (landId) =>
