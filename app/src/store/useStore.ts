@@ -55,7 +55,7 @@ interface AppState {
   setZoom: (zoom: number) => void;
   setPanOffset: (offset: Point) => void;
   setCanvasRotation: (rotation: number) => void;
-  alignFrontRoadToTop: () => void;
+  alignRoadToTop: (roadType: RoadType) => void;
 
   // 基準尺設定
   startScaleSetting: () => void;
@@ -167,7 +167,7 @@ export const useStore = create<AppState>((set) => ({
   setPanOffset: (offset) => set({ panOffset: offset }),
   setCanvasRotation: (rotation) => set({ canvasRotation: rotation }),
 
-  alignFrontRoadToTop: () =>
+  alignRoadToTop: (roadType) =>
     set((state) => {
       // 選択中または最初の土地を取得
       const land = state.selectedLandId
@@ -176,25 +176,25 @@ export const useStore = create<AppState>((set) => ({
 
       if (!land) return {};
 
-      // 正面路線を取得
-      const frontRoad = land.roads.find((r) => r.type === '正面');
-      if (!frontRoad || !frontRoad.vertexIndices) return {};
+      // 指定された路線を取得
+      const road = land.roads.find((r) => r.type === roadType);
+      if (!road || !road.vertexIndices) return {};
 
-      // 正面路線の2点を取得
-      const [startIdx, endIdx] = frontRoad.vertexIndices;
+      // 路線の2点を取得
+      const [startIdx, endIdx] = road.vertexIndices;
       const p1 = land.vertices[startIdx];
       const p2 = land.vertices[endIdx];
 
       if (!p1 || !p2) return {};
 
-      // 正面路線の角度を計算（水平方向からの角度）
+      // 路線の角度を計算（水平方向からの角度）
       const dx = p2.x - p1.x;
       const dy = p2.y - p1.y;
       const angleRad = Math.atan2(dy, dx);
       const angleDeg = angleRad * (180 / Math.PI);
 
-      // 正面路線を上（-90度）に向けるための回転角度
-      // 正面路線を水平（上向き）にするには、現在の角度から90度を引く
+      // 路線を上（-90度）に向けるための回転角度
+      // 路線を水平（上向き）にするには、現在の角度から90度を引く
       const rotationToApply = -angleDeg - 90;
 
       return { canvasRotation: rotationToApply };
